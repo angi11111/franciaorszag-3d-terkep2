@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="hu" class="h-full dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Franciaország 3D Interaktív Domborzati Térképe</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            900: '#1e3a8a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            user-select: none;
+            background-color: #0b0f19;
+        }
+        
+        /* Custom scrollbar for sidebar */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.4);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.7);
+        }
+
+        /* Glassmorphism styling */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .glass-card:hover {
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(30, 41, 59, 0.85);
+        }
+
+        /* Animated pulse ring for 3D marker badges */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .pulse-effect {
+            animation: pulse-ring 2.5s infinite ease-in-out;
+        }
+
+        /* Custom range slider styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+
+        /* Presentation hide transition */
+        .ui-element {
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .ui-hidden {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(10px) scale(0.98) !important;
+        }
+    </style>
+</head>
+<body class="h-full text-slate-100 flex flex-col antialiased bg-slate-950">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 w-full h-full z-0 cursor-grab active:cursor-grabbing"></div>
+
+    <!-- MAIN HEADER BAR (UI Element) -->
+    <header class="ui-element relative z-10 flex items-center justify-between px-6 py-4 glass-panel border-b-0 rounded-b-2xl mx-4 mt-2">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-400">
+                <i data-lucide="mountain-snow" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-wide bg-gradient-to-r from-white via-slate-200 to-blue-400 bg-clip-text text-transparent">
+                    Franciaország 3D Domborzati Térképe
+                </h1>
+                <p class="text-xs text-slate-400">Interaktív domborzati modell & Prezentációs atlasz</p>
+            </div>
+        </div>
+
+        <!-- Center quick view switchers -->
+        <div class="hidden md:flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-white/10 text-xs font-medium">
+            <button id="btn-view-iso" onclick="setCameraView('iso')" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold transition shadow-sm">
+                3D Izometria
+            </button>
+            <button id="btn-view-top" onclick="setCameraView('top')" class="px-3 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 transition">
+                Felülnézet
+            </button>
+            <button id="btn-view-alps" onclick="setCameraView('alps')" class="px-3 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 transition">
+                Alpok fókusz
+            </button>
+            <button id="btn-view-rotate" onclick="toggleAutoRotate()" class="px-3 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 transition flex items-center gap-1">
+                <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> <span id="rotate-text">Forgás KI</span>
+            </button>
+        </div>
+
+        <!-- Right Presentation controls -->
+        <div class="flex items-center gap-2">
+            <button onclick="togglePresentationMode()" class="px-3.5 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-medium rounded-xl border border-indigo-400/30 transition flex items-center gap-2 shadow-lg shadow-indigo-600/20">
+                <i data-lucide="presentation" class="w-4 h-4"></i>
+                <span id="pres-btn-text">Prezentációs Mód</span>
+            </button>
+            <button onclick="toggleFullscreen()" class="p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-xl border border-white/10 transition" title="Teljes képernyő">
+                <i data-lucide="maximize-2" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- LEFT SIDEBAR: Region Selector (UI Element) -->
+    <aside id="sidebar-left" class="ui-element absolute top-24 left-4 z-10 w-80 max-h-[calc(100vh-8rem)] glass-panel rounded-2xl p-4 flex flex-col gap-3 overflow-hidden">
+        <div class="flex items-center justify-between pb-2 border-b border-white/10">
+            <div class="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                <i data-lucide="map-pin" class="w-4 h-4 text-blue-400"></i>
+                <span>Tájegységek és Hegységek</span>
+            </div>
+            <span id="region-count" class="text-xs px-2 py-0.5 rounded-full bg-blue-900/50 text-blue-300 border border-blue-700/40">11 tájegység</span>
+        </div>
+
+        <!-- Filter tabs -->
+        <div class="grid grid-cols-3 gap-1 p-1 bg-slate-900/60 rounded-xl text-[11px] text-center font-medium">
+            <button onclick="filterRegions('all')" id="tab-all" class="py-1 rounded-lg bg-blue-600 text-white font-semibold">Mind</button>
+            <button onclick="filterRegions('mountain')" id="tab-mountain" class="py-1 rounded-lg text-slate-400 hover:text-white">Hegyek</button>
+            <button onclick="filterRegions('basin')" id="tab-basin" class="py-1 rounded-lg text-slate-400 hover:text-white">Síkságok</button>
+        </div>
+
+        <!-- Regions scrollable list -->
+        <div id="regions-list" class="flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
+            <!-- Dynamically populated -->
+        </div>
+
+        <!-- Reset Camera / Reset Selection -->
+        <button onclick="resetSelection()" class="mt-1 w-full py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-xl border border-white/5 transition flex items-center justify-center gap-2">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Nézet és kijelölés alaphelyzetbe</span>
+        </button>
+    </aside>
+
+    <!-- RIGHT FLOATING GLASS INFO CARD (Always visible when a region is active) -->
+    <div id="info-card" class="absolute top-24 right-4 z-20 w-80 sm:w-96 glass-panel rounded-2xl p-5 transition-all duration-500 opacity-0 pointer-events-none translate-x-8 shadow-2xl border border-blue-500/20">
+        <!-- Close Button -->
+        <button onclick="deselectRegion()" class="absolute top-4 right-4 p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition">
+            <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Badge & Title -->
+        <div class="flex items-center gap-2 mb-2">
+            <span id="card-type-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                Fiatal lánchegység
+            </span>
+            <span id="card-elevation-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                4 808 m
+            </span>
+        </div>
+        
+        <h2 id="card-title" class="text-2xl font-bold text-white mb-3 tracking-tight">Alpok (Alpes)</h2>
+
+        <!-- Key Specs Grid -->
+        <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="glass-card p-2.5 rounded-xl">
+                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-medium block mb-0.5">Legmagasabb pont</span>
+                <span id="card-highest-peak" class="text-xs font-semibold text-slate-100 block truncate">Mont Blanc (4 808 m)</span>
+            </div>
+            <div class="glass-card p-2.5 rounded-xl">
+                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-medium block mb-0.5">Éghajlat</span>
+                <span id="card-climate" class="text-xs font-semibold text-slate-100 block truncate">Hegyvidéki</span>
+            </div>
+        </div>
+
+        <!-- Description Paragraph -->
+        <p id="card-description" class="text-xs leading-relaxed text-slate-300 mb-4 bg-slate-900/40 p-3 rounded-xl border border-white/5">
+            Európa legmagasabb hegylánca. Glaciális u-völgyek, meredek sziklafalak, örök hó és Nyugat-Európa legmagasabb csúcsa jellemzi.
+        </p>
+
+        <!-- Presentation Step Navigation -->
+        <div class="flex items-center justify-between pt-3 border-t border-white/10 text-xs">
+            <button onclick="navigateRegion(-1)" class="flex items-center gap-1 text-slate-400 hover:text-white transition">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i> Előző
+            </button>
+            <span id="card-index-indicator" class="text-[11px] text-slate-400 font-mono">1 / 11</span>
+            <button onclick="navigateRegion(1)" class="flex items-center gap-1 text-blue-400 hover:text-blue-300 font-semibold transition">
+                Következő <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- BOTTOM CONTROLS & ELEVATION LEGEND (UI Element) -->
+    <div id="bottom-bar" class="ui-element absolute bottom-4 left-4 right-4 z-10 flex flex-col sm:flex-row items-center justify-between gap-3 pointer-events-none">
+        
+        <!-- Elevation Color Legend -->
+        <div class="pointer-events-auto glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3">
+            <div class="flex items-center gap-1.5 text-xs text-slate-300 font-medium">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-blue-400"></i>
+                <span>Domborzati magasság:</span>
+            </div>
+            <div class="flex items-center gap-1 text-[11px] text-slate-400">
+                <span>0 m</span>
+                <div class="w-32 h-2.5 rounded-full overflow-hidden flex shadow-inner">
+                    <div class="w-1/5 h-full bg-[#1e40af]" title="Tenger / Víz"></div>
+                    <div class="w-1/5 h-full bg-[#15803d]" title="0-200m Síkság"></div>
+                    <div class="w-1/5 h-full bg-[#a3e635]" title="200-800m Dombvidék"></div>
+                    <div class="w-1/5 h-full bg-[#d97706]" title="800-2000m Középhegység"></div>
+                    <div class="w-1/5 h-full bg-[#f8fafc]" title="2000m+ Magashegység / Hó"></div>
+                </div>
+                <span>4000 m+</span>
+            </div>
+        </div>
+
+        <!-- Interactive Settings Sliders -->
+        <div class="pointer-events-auto glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-5 text-xs text-slate-300">
+            <!-- 3D Relief Height Scale Slider -->
+            <div class="flex items-center gap-2">
+                <span class="text-slate-400">3D Domborzat kiemelés:</span>
+                <input id="slider-height-scale" type="range" min="0.5" max="2.5" step="0.1" value="1.3" class="w-24">
+                <span id="height-scale-val" class="font-mono text-blue-400 text-[11px] w-6">1.3x</span>
+            </div>
+            
+            <div class="h-4 w-[1px] bg-white/10 hidden sm:block"></div>
+
+            <!-- Mouse Ripple Lift Intensity Slider -->
+            <div class="flex items-center gap-2 hidden sm:flex">
+                <span class="text-slate-400">Egér kiemelés:</span>
+                <input id="slider-mouse-intensity" type="range" min="0" max="2.0" step="0.1" value="1.0" class="w-20">
+                <span id="mouse-intensity-val" class="font-mono text-blue-400 text-[11px] w-6">1.0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRESENTATION MODE FLOATING OVERLAY CONTROLLER (Visible only in presentation mode) -->
+    <div id="presentation-controls" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 glass-panel px-4 py-2 rounded-2xl flex items-center gap-3 opacity-0 pointer-events-none transition-all duration-300 border border-indigo-500/30 shadow-2xl">
+        <span class="text-xs font-semibold text-indigo-300 flex items-center gap-1.5 px-2 py-1 bg-indigo-950/60 rounded-lg border border-indigo-800/50">
+            <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+            Prezentációs mód
+        </span>
+        <button onclick="navigateRegion(-1)" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition" title="Előző tájegység">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <button onclick="navigateRegion(1)" class="p-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium transition flex items-center gap-1 text-xs" title="Következő tájegység">
+            <span>Következő</span> <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+        <div class="h-4 w-[1px] bg-white/10"></div>
+        <button onclick="togglePresentationMode()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl transition">
+            Kilépés
+        </button>
+    </div>
+
+    <!-- JAVASCRIPT APPLICATION CODE -->
+    <script>
+        // ==========================================
+        // 1. DATA DEFINITION: FRANCE REGIONS
+        // ==========================================
+        const REGIONS_DATA = [
+            {
+                id: 'alpes',
+                name: 'Alpok (Alpes)',
+                category: 'mountain',
+                type: 'Fiatal lánchegység',
+                peak: 'Mont Blanc (4 808 m)',
+                climate: 'Hegyvidéki (hosszú, havas telek)',
+                coords: { x: 5.6, z: 2.2 },
+                desc: 'Nyugat-Európa legmagasabb hegylánca. Meredek sziklás csúcsok, látványos gleccservölgyek (pl. Chamonix) és az örök hó birodalma.',
+                color: '#38bdf8',
+                elevationMeters: 4808,
+                badge: '4 808 m'
+            },
+            {
+                id: 'pyrenees',
+                name: 'Pireneusok (Pyrénées)',
+                category: 'mountain',
+                type: 'Fiatal lánchegység',
+                peak: 'Vignemale (3 298 m)',
+                climate: 'Hegyvidéki / Óceáni átmenet',
+                coords: { x: -1.2, z: 6.8 },
+                desc: 'Franciaország és Spanyolország természetes határa. Vad szurdokok, jeges katlanvölgyek (Gavarnie-körtemplom) és fenyvesek lakhelye.',
+                color: '#60a5fa',
+                elevationMeters: 3298,
+                badge: '3 298 m'
+            },
+            {
+                id: 'massif_central',
+                name: 'Francia-középhegység',
+                category: 'mountain',
+                type: 'Idős röghegység (Vulkanikus)',
+                peak: 'Puy de Sancy (1 885 m)',
+                climate: 'Kontinentális-hegyvidéki',
+                coords: { x: 1.4, z: 2.6 },
+                desc: 'Az ország szívében elhelyezkedő ősi röghegység. Jellegzetes kialudt vulkáni kúpok (puys), bazaltfennsíkok és mély folyóvölgyek szabdalják.',
+                color: '#facc15',
+                elevationMeters: 1885,
+                badge: '1 885 m'
+            },
+            {
+                id: 'vosges',
+                name: 'Vogézek (Vosges)',
+                category: 'mountain',
+                type: 'Idős röghegység',
+                peak: 'Grand Ballon (1 424 m)',
+                climate: 'Kontinentális / Hegyvidéki',
+                coords: { x: 5.8, z: -3.8 },
+                desc: 'Elzász nyugati határán húzódó, lekerekített csúcsú („ballons”) fenyvesekkel borított középhegység.',
+                color: '#eab308',
+                elevationMeters: 1424,
+                badge: '1 424 m'
+            },
+            {
+                id: 'jura',
+                name: 'Jura-hegység',
+                category: 'mountain',
+                type: 'Fiatal lánchegység (Mészkő)',
+                peak: 'Crêt de la Neige (1 720 m)',
+                climate: 'Hegyvidéki (kemény telek)',
+                coords: { x: 5.2, z: -0.6 },
+                desc: 'A Svájci-Alpok előterében fekvő redős mészkővonulat. Karsztos fennsíkok, barlangok és mély völgyek jellemzik.',
+                color: '#ca8a04',
+                elevationMeters: 1720,
+                badge: '1 720 m'
+            },
+            {
+                id: 'ardennes',
+                name: 'Ardennek (Ardennes)',
+                category: 'mountain',
+                type: 'Idős röghegység (Fennsík)',
+                peak: 'Signal de Botrange közelében (~500 m)',
+                climate: 'Mérsékelt kontinentális',
+                coords: { x: 3.5, z: -6.5 },
+                desc: 'Északi fekvésű, erősen lekopott erdős röghegység, amelyet a Meuse folyó kanyargós völgyei vágnak át.',
+                color: '#84cc16',
+                elevationMeters: 500,
+                badge: '~500 m'
+            },
+            {
+                id: 'bassin_parisien',
+                name: 'Párizsi-medence',
+                category: 'basin',
+                type: 'Síkság / Üledékes medence',
+                peak: 'Peremi dombok (~200–300 m)',
+                climate: 'Mérsékelt óceáni / kontinentális',
+                coords: { x: 1.0, z: -3.2 },
+                desc: 'Franciaország legnagyobb, rendkívül termékeny üledékes medencéje. Lépcsővidékek, széles folyóvölgyek (Szajna, Loire) és Párizs otthona.',
+                color: '#22c55e',
+                elevationMeters: 150,
+                badge: 'Síkság'
+            },
+            {
+                id: 'bassin_aquitain',
+                name: 'Aquitániai-medence',
+                category: 'basin',
+                type: 'Síkság / Üledékes medence',
+                peak: 'Dune du Pilat (~105 m)',
+                climate: 'Enyhe óceáni',
+                coords: { x: -3.0, z: 3.0 },
+                desc: 'Délnyugati síkság a Garonne mentén. Homokos óceánpartok, Európa legmagasabb homokdűnéje (Pilat) és híres borvidékek világa.',
+                color: '#10b981',
+                elevationMeters: 100,
+                badge: 'Síkság'
+            },
+            {
+                id: 'vallee_rhone',
+                name: 'Rhône-völgy (Vallée du Rhône)',
+                category: 'basin',
+                type: 'Tektonikus folyóvölgy',
+                peak: 'Völgyalj (0–200 m)',
+                climate: 'Északon kontinentális, délen mediterrán',
+                coords: { x: 3.6, z: 2.8 },
+                desc: 'Fontos észak-déli közlekedési és mezőgazdasági folyosó az Alpok és a Massif Central között, a Misztrál szél útvonala.',
+                color: '#14b8a6',
+                elevationMeters: 80,
+                badge: 'Völgy'
+            },
+            {
+                id: 'massif_armoricain',
+                name: 'Armorikai-masszívum',
+                category: 'mountain',
+                type: 'Idős röghegység (Lekopott domb)',
+                peak: 'Mont des Avaloirs (416 m)',
+                climate: 'Enyhe óceáni (szeles, csapadékos)',
+                coords: { x: -4.8, z: -2.8 },
+                desc: 'Bretagne és Normandia ősi rögvidéke. Lankás dombok, sziklás tengerpartok és sövényfonatos mezőgazdasági táj (bocage).',
+                color: '#a3e635',
+                elevationMeters: 416,
+                badge: '416 m'
+            },
+            {
+                id: 'corse',
+                name: 'Korzika (Corse)',
+                category: 'mountain',
+                type: 'Sziget / Hegyvidék',
+                peak: 'Monte Cinto (2 706 m)',
+                climate: 'Mediterrán / Hegyvidéki',
+                coords: { x: 8.8, z: 7.2 },
+                desc: '„Hegy a tengerben” – látványos gránitcsúcsok emelkednek ki a Földközi-tengerből. Egyedülálló mediterrán hegyi táj.',
+                color: '#0284c7',
+                elevationMeters: 2706,
+                badge: '2 706 m'
+            }
+        ];
+
+        // Global State variables
+        let scene, camera, renderer, controls;
+        let terrainMesh, terrainGeometry, basePositions, currentElevations;
+        let regionMarkers = [];
+        let raycaster, mouse;
+        let activeRegionIndex = -1;
+        let hoveredRegionIndex = -1;
+        let isPresentationMode = false;
+        let isAutoRotate = false;
+        let targetCameraPos = null;
+        let targetLookAt = null;
+        
+        // User adjustable parameters
+        let heightExaggeration = 1.3;
+        let mouseRippleIntensity = 1.0;
+        let activeFilter = 'all';
+
+        // Mouse hover interaction point
+        let mouseTerrainPoint = null;
+
+        // Initialize Lucide icons
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initSidebar();
+            initThreeJS();
+            setupEvents();
+            animate();
+        });
+
+        // ==========================================
+        // 2. THREE.JS 3D SCENE SETUP
+        // ==========================================
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0b0f19);
+            scene.fog = new THREE.FogExp2(0x0b0f19, 0.025);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 18, 19);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.1;
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
+            controls.minDistance = 5;
+            controls.maxDistance = 45;
+            controls.target.set(0, 0, 0);
+
+            // Lighting setup
+            setupLighting();
+
+            // Create France 3D Mesh
+            createFranceTerrain();
+
+            // Create Water & Ocean plane
+            createOcean();
+
+            // Create 3D Region Pins / Badges
+            createRegionMarkers();
+
+            // Raycasting setup
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+        }
+
+        function setupLighting() {
+            // Ambient sky light
+            const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.4);
+            scene.add(ambientLight);
+
+            // Main Sun Light with Shadows
+            const sunLight = new THREE.DirectionalLight(0xfff5ea, 1.4);
+            sunLight.position.set(15, 25, 15);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 80;
+            const d = 16;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            sunLight.shadow.bias = -0.0005;
+            scene.add(sunLight);
+
+            // Soft Rim Blue Light
+            const rimLight = new THREE.DirectionalLight(0x3b82f6, 0.7);
+            rimLight.position.set(-15, 12, -15);
+            scene.add(rimLight);
+        }
+
+        // ==========================================
+        // 3. PROCEDURAL TERRAIN GENERATION FOR FRANCE
+        // ==========================================
+        function calculateRawFranceElevation(x, z) {
+            // Check mainland France border mask approximation
+            let inMainland = false;
+            let inCorsica = false;
+
+            // Corsica check
+            const distCorsica = Math.hypot(x - 8.8, z - 7.2);
+            if (distCorsica < 1.1) {
+                inCorsica = true;
+            }
+
+            // Polygon boundary check for mainland France
+            const borderDist = getFranceBorderDistance(x, z);
+            if (borderDist > 0 || inCorsica) {
+                inMainland = true;
+            }
+
+            if (!inMainland) return 0; // Ocean level
+
+            let h = 0.15; // Low base altitude for land
+
+            // Height contributions from mountains
+            // 1. ALPS (high steep peaks around x=5.6, z=2.2)
+            const dAlps = Math.hypot(x - 5.6, z - 2.2);
+            if (dAlps < 3.2) {
+                const w = Math.cos((dAlps / 3.2) * Math.PI * 0.5);
+                const noise = Math.sin(x * 4) * Math.cos(z * 4) * 0.4 + Math.sin(x * 9 + z * 7) * 0.2;
+                h += (2.6 * Math.pow(w, 2)) + Math.max(0, noise * w * 1.5);
+            }
+
+            // 2. PYRENEES (line ridge near south border z=6.8, x from -3 to +1.5)
+            const dPyrX = Math.max(-3.0, Math.min(1.5, x));
+            const dPyr = Math.hypot(x - dPyrX, z - 6.8);
+            if (dPyr < 1.4) {
+                const w = Math.cos((dPyr / 1.4) * Math.PI * 0.5);
+                const ridgeNoise = Math.sin(x * 6) * 0.3 + 0.7;
+                h += 1.8 * Math.pow(w, 1.8) * ridgeNoise;
+            }
+
+            // 3. MASSIF CENTRAL (rounded dome around x=1.4, z=2.6)
+            const dMC = Math.hypot(x - 1.4, z - 2.6);
+            if (dMC < 2.5) {
+                const w = Math.cos((dMC / 2.5) * Math.PI * 0.5);
+                const volcanoPuy = Math.sin(x * 5) * Math.cos(z * 5) * 0.2;
+                h += 1.1 * Math.pow(w, 1.5) + (volcanoPuy * w);
+            }
+
+            // 4. VOSGES (x=5.8, z=-3.8)
+            const dVosges = Math.hypot(x - 5.8, z - (-3.8));
+            if (dVosges < 1.3) {
+                const w = Math.cos((dVosges / 1.3) * Math.PI * 0.5);
+                h += 0.8 * Math.pow(w, 1.5);
+            }
+
+            // 5. JURA (x=5.2, z=-0.6)
+            const dJura = Math.hypot(x - 5.2, z - (-0.6));
+            if (dJura < 1.4) {
+                const w = Math.cos((dJura / 1.4) * Math.PI * 0.5);
+                h += 0.95 * Math.pow(w, 1.6);
+            }
+
+            // 6. ARMORICAN MASSIF (x=-4.8, z=-2.8)
+            const dArm = Math.hypot(x - (-4.8), z - (-2.8));
+            if (dArm < 2.0) {
+                const w = Math.cos((dArm / 2.0) * Math.PI * 0.5);
+                h += 0.35 * Math.pow(w, 1.4);
+            }
+
+            // 7. ARDENNES (x=3.5, z=-6.5)
+            const dArd = Math.hypot(x - 3.5, z - (-6.5));
+            if (dArd < 1.3) {
+                const w = Math.cos((dArd / 1.3) * Math.PI * 0.5);
+                h += 0.4 * Math.pow(w, 1.4);
+            }
+
+            // 8. CORSICA (x=8.8, z=7.2)
+            if (inCorsica) {
+                const w = Math.cos((distCorsica / 1.1) * Math.PI * 0.5);
+                h += 1.6 * Math.pow(w, 1.5);
+            }
+
+            // Carve Rivers (Szajna, Loire, Garonne, Rhône)
+            const riverDepth = calculateRiverCarve(x, z);
+            h = Math.max(0.05, h - riverDepth);
+
+            // Smooth coastal falloff near mainland border edge
+            if (!inCorsica && borderDist < 0.6) {
+                const edgeFactor = Math.max(0, borderDist / 0.6);
+                h *= Math.pow(edgeFactor, 0.7);
+            }
+
+            return h;
+        }
+
+        // Simplified France hex outline distance metric
+        function getFranceBorderDistance(x, z) {
+            // Center of mainland around (0, 0)
+            // Define boundary vertices
+            const poly = [
+                [-3.2, -6.2], [1.8, -7.2], [5.2, -5.5], [6.8, -3.2],
+                [6.5, 3.2], [3.2, 6.2], [-1.8, 7.5], [-3.8, 5.0],
+                [-5.8, 1.2], [-6.2, -1.8], [-4.2, -4.8]
+            ];
+            
+            // Point in polygon test
+            let inside = false;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                const xi = poly[i][0], zi = poly[i][1];
+                const xj = poly[j][0], zj = poly[j][1];
+                const intersect = ((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi);
+                if (intersect) inside = !inside;
+            }
+
+            if (!inside) return -1;
+
+            // Calculate min distance to edges for edge softening
+            let minDist = 999;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                const d = distToSegment({x, z}, {x: poly[i][0], z: poly[i][1]}, {x: poly[j][0], z: poly[j][1]});
+                if (d < minDist) minDist = d;
+            }
+            return minDist;
+        }
+
+        function distToSegment(p, v, w) {
+            const l2 = (v.x - w.x)**2 + (v.z - w.z)**2;
+            if (l2 === 0) return Math.hypot(p.x - v.x, p.z - v.z);
+            let t = ((p.x - v.x) * (w.x - v.x) + (p.z - v.z) * (w.z - v.z)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.z - (v.z + t * (w.z - v.z)));
+        }
+
+        function calculateRiverCarve(x, z) {
+            let carve = 0;
+            // Seine: (3.5, -4.5) -> (1.0, -3.2) -> (-2.5, -4.8)
+            if (Math.hypot(x - 0.5, z - (-3.8)) < 1.8) {
+                const dSeine = distToSegment({x, z}, {x: 3.2, z: -4.5}, {x: -2.8, z: -4.8});
+                if (dSeine < 0.25) carve = Math.max(carve, (0.25 - dSeine) * 0.4);
+            }
+            // Rhône: (5.2, -0.6) -> (3.6, 1.2) -> (3.6, 5.5)
+            const dRhone = distToSegment({x, z}, {x: 3.6, z: 0.5}, {x: 3.6, z: 5.5});
+            if (dRhone < 0.22) carve = Math.max(carve, (0.22 - dRhone) * 0.5);
+
+            // Loire: (1.4, 2.6) -> (0.5, -1.8) -> (-4.5, -1.8)
+            const dLoire = distToSegment({x, z}, {x: 1.0, z: -1.8}, {x: -4.5, z: -1.8});
+            if (dLoire < 0.22) carve = Math.max(carve, (0.22 - dLoire) * 0.35);
+
+            return carve;
+        }
+
+        function createFranceTerrain() {
+            const width = 22;
+            const height = 22;
+            const segments = 180;
+
+            terrainGeometry = new THREE.PlaneGeometry(width, height, segments, segments);
+            terrainGeometry.rotateX(-Math.PI / 2); // Lay flat on XZ plane
+
+            const count = terrainGeometry.attributes.position.count;
+            basePositions = new Float32Array(count * 3);
+            currentElevations = new Float32Array(count);
+
+            const colors = new Float32Array(count * 3);
+
+            for (let i = 0; i < count; i++) {
+                const vx = terrainGeometry.attributes.position.getX(i);
+                const vz = terrainGeometry.attributes.position.getZ(i);
+
+                const rawH = calculateRawFranceElevation(vx, vz);
+                const y = rawH * heightExaggeration;
+
+                terrainGeometry.attributes.position.setY(i, y);
+
+                // Store initial base positions
+                basePositions[i * 3] = vx;
+                basePositions[i * 3 + 1] = y;
+                basePositions[i * 3 + 2] = vz;
+                currentElevations[i] = y;
+
+                // Color calculation based on elevation
+                const c = getElevationColor(rawH);
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+            }
+
+            terrainGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            terrainGeometry.computeVertexNormals();
+
+            // Material
+            const terrainMaterial = new THREE.MeshStandardMaterial({
+                vertexColors: true,
+                roughness: 0.75,
+                metalness: 0.1,
+                flatShading: false
+            });
+
+            terrainMesh = new THREE.Mesh(terrainGeometry, terrainMaterial);
+            terrainMesh.receiveShadow = true;
+            terrainMesh.castShadow = true;
+            scene.add(terrainMesh);
+        }
+
+        // Color mapping from height level
+        function getElevationColor(h) {
+            const color = new THREE.Color();
+            if (h <= 0.02) {
+                // Coastal / water transition
+                color.setHex(0x1d4ed8);
+            } else if (h < 0.25) {
+                // Lowland / Basins (Rich green)
+                const t = h / 0.25;
+                color.lerpColors(new THREE.Color(0x15803d), new THREE.Color(0x4ade80), t);
+            } else if (h < 0.7) {
+                // Hills / Plateaus (Yellowish Green to Gold)
+                const t = (h - 0.25) / 0.45;
+                color.lerpColors(new THREE.Color(0x84cc16), new THREE.Color(0xeab308), t);
+            } else if (h < 1.6) {
+                // Medium mountains (Warm Brown)
+                const t = (h - 0.7) / 0.9;
+                color.lerpColors(new THREE.Color(0xd97706), new THREE.Color(0x9a3412), t);
+            } else {
+                // High alpine & snow caps (Slate to Snow white)
+                const t = Math.min(1.0, (h - 1.6) / 1.0);
+                color.lerpColors(new THREE.Color(0x94a3b8), new THREE.Color(0xffffff), t);
+            }
+            return color;
+        }
+
+        function createOcean() {
+            const oceanGeo = new THREE.PlaneGeometry(60, 60);
+            oceanGeo.rotateX(-Math.PI / 2);
+            const oceanMat = new THREE.MeshStandardMaterial({
+                color: 0x092047,
+                roughness: 0.2,
+                metalness: 0.6,
+                transparent: true,
+                opacity: 0.85
+            });
+            const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+            ocean.position.y = -0.05;
+            scene.add(ocean);
+
+            // Subtle grid overlay for visual flair
+            const grid = new THREE.GridHelper(60, 40, 0x1e3a8a, 0x172554);
+            grid.position.y = -0.04;
+            scene.add(grid);
+        }
+
+        // ==========================================
+        // 4. 3D MARKERS & BADGES FOR REGIONS
+        // ==========================================
+        function createRegionMarkers() {
+            REGIONS_DATA.forEach((reg, idx) => {
+                const group = new THREE.Group();
+
+                // Compute terrain Y at region coordinate
+                const rawH = calculateRawFranceElevation(reg.coords.x, reg.coords.z);
+                const terrainY = rawH * heightExaggeration;
+
+                group.position.set(reg.coords.x, terrainY + 0.3, reg.coords.z);
+
+                // Small vertical glowing pin pole
+                const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.6);
+                const poleMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.y = 0.3;
+                group.add(pole);
+
+                // Glowing Sphere head
+                const headGeo = new THREE.SphereGeometry(0.18, 16, 16);
+                const headMat = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color(reg.color),
+                    emissive: new THREE.Color(reg.color),
+                    emissiveIntensity: 0.6,
+                    roughness: 0.2
+                });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 0.6;
+                group.add(head);
+
+                group.userData = { regionIndex: idx, regId: reg.id };
+                scene.add(group);
+                regionMarkers.push(group);
+            });
+        }
+
+        // ==========================================
+        // 5. INTERACTION & DYNAMIC HEIGHT ELEVATION
+        // ==========================================
+        function setupEvents() {
+            window.addEventListener('resize', onWindowResize);
+            
+            const container = document.getElementById('canvas-container');
+            container.addEventListener('mousemove', onMouseMove);
+            container.addEventListener('click', onClickCanvas);
+
+            // Sliders
+            document.getElementById('slider-height-scale').addEventListener('input', (e) => {
+                heightExaggeration = parseFloat(e.target.value);
+                document.getElementById('height-scale-val').innerText = heightExaggeration.toFixed(1) + 'x';
+                rebuildTerrainHeights();
+            });
+
+            document.getElementById('slider-mouse-intensity').addEventListener('input', (e) => {
+                mouseRippleIntensity = parseFloat(e.target.value);
+                document.getElementById('mouse-intensity-val').innerText = mouseRippleIntensity.toFixed(1);
+            });
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrainMesh);
+
+            if (intersects.length > 0) {
+                mouseTerrainPoint = intersects[0].point;
+
+                // Check proximity to region pins
+                let foundHover = -1;
+                REGIONS_DATA.forEach((reg, idx) => {
+                    const dist = Math.hypot(intersects[0].point.x - reg.coords.x, intersects[0].point.z - reg.coords.z);
+                    if (dist < 1.4) {
+                        foundHover = idx;
+                    }
+                });
+
+                if (foundHover !== hoveredRegionIndex) {
+                    hoveredRegionIndex = foundHover;
+                    document.body.style.cursor = foundHover !== -1 ? 'pointer' : 'grab';
+                }
+            } else {
+                mouseTerrainPoint = null;
+                hoveredRegionIndex = -1;
+                document.body.style.cursor = 'grab';
+            }
+        }
+
+        function onClickCanvas(event) {
+            if (hoveredRegionIndex !== -1) {
+                selectRegion(hoveredRegionIndex);
+            }
+        }
+
+        function rebuildTerrainHeights() {
+            const count = terrainGeometry.attributes.position.count;
+            for (let i = 0; i < count; i++) {
+                const vx = basePositions[i * 3];
+                const vz = basePositions[i * 3 + 2];
+                const rawH = calculateRawFranceElevation(vx, vz);
+                basePositions[i * 3 + 1] = rawH * heightExaggeration;
+            }
+        }
+
+        // Real-time animation loop updating vertices based on mouse & active region
+        function updateTerrainDeformation() {
+            if (!terrainGeometry) return;
+
+            const positions = terrainGeometry.attributes.position;
+            const count = positions.count;
+
+            const activeReg = activeRegionIndex !== -1 ? REGIONS_DATA[activeRegionIndex] : null;
+
+            for (let i = 0; i < count; i++) {
+                const vx = basePositions[i * 3];
+                const baseY = basePositions[i * 3 + 1];
+                const vz = basePositions[i * 3 + 2];
+
+                if (baseY <= 0.05) continue; // Skip ocean
+
+                let targetY = baseY;
+
+                // 1. Mouse cursor dynamic elevation ripple
+                if (mouseTerrainPoint && mouseRippleIntensity > 0) {
+                    const distMouse = Math.hypot(vx - mouseTerrainPoint.x, vz - mouseTerrainPoint.z);
+                    if (distMouse < 2.5) {
+                        const factor = Math.cos((distMouse / 2.5) * Math.PI * 0.5);
+                        targetY += Math.pow(factor, 2) * 0.9 * mouseRippleIntensity;
+                    }
+                }
+
+                // 2. Active region highlight elevation lift
+                if (activeReg) {
+                    const distReg = Math.hypot(vx - activeReg.coords.x, vz - activeReg.coords.z);
+                    if (distReg < 2.2) {
+                        const factor = Math.cos((distReg / 2.2) * Math.PI * 0.5);
+                        targetY += Math.pow(factor, 1.5) * 1.2;
+                    }
+                }
+
+                // Smooth interpolation (LERP)
+                currentElevations[i] += (targetY - currentElevations[i]) * 0.12;
+                positions.setY(i, currentElevations[i]);
+            }
+
+            positions.needsUpdate = true;
+            terrainGeometry.computeVertexNormals();
+
+            // Update region marker Y positions to stick to elevating ground
+            regionMarkers.forEach((marker, idx) => {
+                const reg = REGIONS_DATA[idx];
+                const rawH = calculateRawFranceElevation(reg.coords.x, reg.coords.z);
+                let y = rawH * heightExaggeration;
+
+                // Lift marker if active
+                if (idx === activeRegionIndex) y += 1.2;
+                marker.position.y += (y + 0.3 - marker.position.y) * 0.15;
+            });
+        }
+
+        // ==========================================
+        // 6. UI & SIDEBAR MANAGERS
+        // ==========================================
+        function initSidebar() {
+            const listEl = document.getElementById('regions-list');
+            listEl.innerHTML = '';
+
+            REGIONS_DATA.forEach((reg, idx) => {
+                const item = document.createElement('div');
+                item.className = `glass-card p-3 rounded-xl cursor-pointer transition flex items-center justify-between border ${activeRegionIndex === idx ? 'border-blue-500 bg-blue-900/40' : 'border-white/5'}`;
+                item.id = `region-item-${idx}`;
+                item.onclick = () => selectRegion(idx);
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-2.5 h-2.5 rounded-full" style="background-color: ${reg.color}"></div>
+                        <div>
+                            <h3 class="text-xs font-semibold text-slate-100">${reg.name}</h3>
+                            <p class="text-[10px] text-slate-400">${reg.type}</p>
+                        </div>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono border border-white/5">${reg.badge}</span>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function filterRegions(type) {
+            activeFilter = type;
+            document.querySelectorAll('#sidebar-left button[id^="tab-"]').forEach(btn => {
+                btn.className = 'py-1 rounded-lg text-slate-400 hover:text-white';
+            });
+            document.getElementById(`tab-${type}`).className = 'py-1 rounded-lg bg-blue-600 text-white font-semibold';
+
+            REGIONS_DATA.forEach((reg, idx) => {
+                const item = document.getElementById(`region-item-${idx}`);
+                if (!item) return;
+                if (type === 'all' || reg.category === type) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function selectRegion(idx) {
+            if (idx < 0 || idx >= REGIONS_DATA.length) return;
+            activeRegionIndex = idx;
+            const reg = REGIONS_DATA[idx];
+
+            // Highlight sidebar item
+            document.querySelectorAll('#regions-list > div').forEach((el, i) => {
+                if (i === idx) {
+                    el.className = 'glass-card p-3 rounded-xl cursor-pointer transition flex items-center justify-between border border-blue-500 bg-blue-900/40 shadow-lg shadow-blue-500/10';
+                    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    el.className = 'glass-card p-3 rounded-xl cursor-pointer transition flex items-center justify-between border border-white/5';
+                }
+            });
+
+            // Update Glass Info Card
+            document.getElementById('card-title').innerText = reg.name;
+            document.getElementById('card-type-badge').innerText = reg.type;
+            document.getElementById('card-elevation-badge').innerText = reg.badge;
+            document.getElementById('card-highest-peak').innerText = reg.peak;
+            document.getElementById('card-climate').innerText = reg.climate;
+            document.getElementById('card-description').innerText = reg.desc;
+            document.getElementById('card-index-indicator').innerText = `${idx + 1} / ${REGIONS_DATA.length}`;
+
+            // Reveal Info Card
+            const card = document.getElementById('info-card');
+            card.classList.remove('opacity-0', 'pointer-events-none', 'translate-x-8');
+            card.classList.add('opacity-100', 'translate-x-0');
+
+            // Smooth Camera Focus on region
+            const camTargetX = reg.coords.x;
+            const camTargetZ = reg.coords.z;
+            
+            targetLookAt = new THREE.Vector3(camTargetX, 0.8, camTargetZ);
+            targetCameraPos = new THREE.Vector3(camTargetX + 0.1, 8.5, camTargetZ + 8.5);
+        }
+
+        function deselectRegion() {
+            activeRegionIndex = -1;
+            document.querySelectorAll('#regions-list > div').forEach(el => {
+                el.className = 'glass-card p-3 rounded-xl cursor-pointer transition flex items-center justify-between border border-white/5';
+            });
+
+            const card = document.getElementById('info-card');
+            card.classList.add('opacity-0', 'pointer-events-none', 'translate-x-8');
+            card.classList.remove('opacity-100', 'translate-x-0');
+
+            resetCameraView();
+        }
+
+        function navigateRegion(step) {
+            let nextIdx = activeRegionIndex + step;
+            if (nextIdx < 0) nextIdx = REGIONS_DATA.length - 1;
+            if (nextIdx >= REGIONS_DATA.length) nextIdx = 0;
+            selectRegion(nextIdx);
+        }
+
+        function resetSelection() {
+            deselectRegion();
+            setCameraView('iso');
+        }
+
+        // ==========================================
+        // 7. CAMERA PRESETS & PRESENTATION MODE
+        // ==========================================
+        function setCameraView(preset) {
+            deselectRegion();
+            if (preset === 'iso') {
+                targetLookAt = new THREE.Vector3(0, 0, 0);
+                targetCameraPos = new THREE.Vector3(0, 18, 19);
+            } else if (preset === 'top') {
+                targetLookAt = new THREE.Vector3(0, 0, 0);
+                targetCameraPos = new THREE.Vector3(0, 24, 0.01);
+            } else if (preset === 'alps') {
+                selectRegion(0); // Focus Alps
+            }
+        }
+
+        function resetCameraView() {
+            targetLookAt = new THREE.Vector3(0, 0, 0);
+            targetCameraPos = new THREE.Vector3(0, 18, 19);
+        }
+
+        function toggleAutoRotate() {
+            isAutoRotate = !isAutoRotate;
+            controls.autoRotate = isAutoRotate;
+            controls.autoRotateSpeed = 1.2;
+            const textEl = document.getElementById('rotate-text');
+            const btnEl = document.getElementById('btn-view-rotate');
+            if (isAutoRotate) {
+                textEl.innerText = 'Forgás BE';
+                btnEl.classList.add('bg-blue-600/30', 'text-blue-300', 'border-blue-500/40');
+            } else {
+                textEl.innerText = 'Forgás KI';
+                btnEl.classList.remove('bg-blue-600/30', 'text-blue-300', 'border-blue-500/40');
+            }
+        }
+
+        function togglePresentationMode() {
+            isPresentationMode = !isPresentationMode;
+
+            const uiElements = document.querySelectorAll('.ui-element');
+            const presControls = document.getElementById('presentation-controls');
+            const btnText = document.getElementById('pres-btn-text');
+
+            if (isPresentationMode) {
+                uiElements.forEach(el => el.classList.add('ui-hidden'));
+                presControls.classList.remove('opacity-0', 'pointer-events-none');
+                presControls.classList.add('opacity-100');
+                btnText.innerText = 'Kilépés';
+                if (activeRegionIndex === -1) selectRegion(0);
+            } else {
+                uiElements.forEach(el => el.classList.remove('ui-hidden'));
+                presControls.classList.add('opacity-0', 'pointer-events-none');
+                presControls.classList.remove('opacity-100');
+                btnText.innerText = 'Prezentációs Mód';
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==========================================
+        // 8. MAIN ANIMATION LOOP
+        // ==========================================
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Smooth camera transition if target exists
+            if (targetCameraPos && targetLookAt) {
+                camera.position.lerp(targetCameraPos, 0.05);
+                controls.target.lerp(targetLookAt, 0.05);
+
+                if (camera.position.distanceTo(targetCameraPos) < 0.05) {
+                    targetCameraPos = null;
+                    targetLookAt = null;
+                }
+            }
+
+            controls.update();
+
+            // Update real-time vertex elevations
+            updateTerrainDeformation();
+
+            // Render 3D Scene
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
